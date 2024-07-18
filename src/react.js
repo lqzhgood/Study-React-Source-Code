@@ -1,4 +1,4 @@
-import { REACT_ELEMENT } from './const';
+import { REACT_ELEMENT, REACT_FORWARD_REF, toVNode } from './const';
 
 import { Component } from './Component';
 
@@ -13,9 +13,9 @@ function createElement(type, properties, children) {
     let props = { ...properties };
 
     if (arguments.length > 3) {
-        props.children = Array.prototype.slice.call(arguments, 2);
+        props.children = Array.prototype.slice.call(arguments, 2).map(toVNode);
     } else {
-        props.children = children;
+        props.children = toVNode(children);
     }
 
     return {
@@ -27,9 +27,24 @@ function createElement(type, properties, children) {
     };
 }
 
+function createRef() {
+    return {
+        current: null,
+    };
+}
+
+function forwardRef(render) {
+    return {
+        $$typeof: REACT_FORWARD_REF,
+        render,
+    };
+}
+
 const React = {
     createElement,
     Component,
+    createRef,
+    forwardRef,
 };
 
 export default React;
