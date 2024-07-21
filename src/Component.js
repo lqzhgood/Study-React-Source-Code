@@ -28,21 +28,32 @@ class Updater {
             this.launchUpdate();
         }
     }
-    launchUpdate() {
+    launchUpdate(nextProps) {
         const { ClassComponentInstance, pendingStates } = this;
-        if (pendingStates.length === 0) return;
-        ClassComponentInstance.state = this.pendingStates.reduce(
-            (pre, cV) => ({ ...pre, ...cV }),
-            ClassComponentInstance.state
-        );
+        if (pendingStates.length === 0 && !nextProps) return;
+        let isShouldUpdate = true;
+        let nextState = this.pendingStates.reduce((preState, newState) => {
+            return {
+                ...preState,
+                ...newState,
+            };
+        }, ClassComponentInstance.state);
+
+        if (
+            ClassComponentInstance.shouldComponentUpdate &&
+            !ClassComponentInstance.shouldComponentUpdate(nextProps, nextState)
+        ) {
+            isShouldUpdate = false;
+        }
         this.pendingStates.length = 0;
-        ClassComponentInstance.update();
+        if (nextProps) ClassComponentInstance.props = nextProps;
+        ClassComponentInstance.state = nextState;
+        if (isShouldUpdate) ClassComponentInstance.update();
     }
 }
 
 export class Component {
     static IS_CLASS_COMPONENT = true;
-    oldVNode;
 
     constructor(props) {
         this.updater = new Updater(this);
@@ -55,10 +66,25 @@ export class Component {
     }
 
     update() {
+        // 1. 获取重新执行render函数后的虚拟DOM 新虚拟DOM
+        // 2. 根据新虚拟DOM生成新的真实DOM
+        // 3. 将真实DOM挂载到页面上
         let oldVNode = this.oldVNode;
-        let oldDom = findDomByVNode(oldVNode);
+        let oldDOM = findDomByVNode(oldVNode);
+        console.log('this', this);
+        if (this.constructor.getDerivedStateFromProps) {
+            let newState =
+                this.constructor.getDerivedStateFromProps(
+                    this.props,
+                    this.state
+                ) || {};
+            this.state = { ...this.state, ...newState };
+        }
         let newVNode = this.render();
-        updateDomTree(oldVNode, newVNode, oldDom);
+        updateDomTree(oldVNode, newVNode, oldDOM);
         this.oldVNode = newVNode;
+        if (this.componentDidUpdate) {
+            this.componentDidUpdate(this.props, this.state);
+        }
     }
 }

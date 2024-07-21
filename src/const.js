@@ -10,3 +10,6 @@ export const toVNode = node => {
           }
         : node;
 };
+
+export const MOVE = 'move';
+export const CREATE = 'create';
