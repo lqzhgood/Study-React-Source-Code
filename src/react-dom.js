@@ -2,13 +2,22 @@ import {
     REACT_ELEMENT,
     REACT_FORWARD_REF,
     REACT_TEXT,
+    REACT_MEMO,
     MOVE,
     CREATE,
 } from './const';
 import { addEvent } from './event';
 
+import { resetHookIndex } from './hook';
+
+export let emitUpdateForHooks;
+
 function render(VNode, containerDom) {
     mount(VNode, containerDom);
+    emitUpdateForHooks = () => {
+        resetHookIndex();
+        updateDomTree(VNode, VNode, findDomByVNode(VNode));
+    };
 }
 
 function mount(VNode, containerDom) {
@@ -24,6 +33,10 @@ function mountArray(children, parent) {
 
     for (let i = 0; i < children.length; i++) {
         const elm = children[i];
+        if (!elm) {
+            children.splice(i, 1);
+            continue;
+        }
         elm.index = i;
         mount(elm, parent);
     }
@@ -31,10 +44,12 @@ function mountArray(children, parent) {
 
 function getDomByFunctionComponent(VNode) {
     let { type, props } = VNode;
-
     let renderVNode = type(props);
     if (!renderVNode) return null;
-    return createDOM(renderVNode);
+    VNode.oldRenderVNode = renderVNode;
+    const dom = createDOM(renderVNode);
+    VNode.dom = dom;
+    return dom;
 }
 
 function getDomByClassComponent(VNode) {
@@ -63,6 +78,9 @@ function getDomByForwardRefFunction(VNode) {
 function createDOM(VNode) {
     const { type, props, ref } = VNode;
     let dom;
+    if (type && type.$$typeof === REACT_MEMO) {
+        return getDomByMemoFunctionComponent(VNode);
+    }
 
     if (type && type.$$typeof === REACT_FORWARD_REF) {
         return getDomByForwardRefFunction(VNode);
@@ -103,6 +121,14 @@ function createDOM(VNode) {
     return dom;
 }
 
+function getDomByMemoFunctionComponent(vNode) {
+    let { type, props } = vNode;
+    let renderVNode = type.type(props);
+    if (!renderVNode) return null;
+    vNode.oldRenderVdom = renderVNode;
+    return createDOM(renderVNode);
+}
+
 function setPropsForDOM(dom, props = {}) {
     if (!dom) return;
     Object.entries(props).forEach(([key, value]) => {
@@ -130,7 +156,6 @@ export function findDomByVNode(VNode) {
 }
 
 export function updateDomTree(oldVNode, newVNode, oldDOM) {
-    let parentNode = oldDOM.parentNode;
     // parentNode.removeChild(oldDom);
     // parentNode.appendChild(createDOM(newVNode));
 
@@ -147,14 +172,14 @@ export function updateDomTree(oldVNode, newVNode, oldDOM) {
         case 'NO_OPERATE':
             break;
         case 'ADD':
-            parentNode.appendChild(createDOM(newVNode));
+            oldDOM.parentNode.appendChild(createDOM(newVNode));
             break;
         case 'DELETE':
             removeVNode(oldVNode);
             break;
         case 'REPLACE':
             removeVNode(oldVNode);
-            parentNode.appendChild(createDOM(newVNode));
+            oldDOM.parentNode.appendChild(createDOM(newVNode));
             break;
         default:
             deepDOMDiff(oldVNode, newVNode);
@@ -177,10 +202,14 @@ function deepDOMDiff(oldVNode, newVNode) {
             oldVNode.type.IS_CLASS_COMPONENT,
         FUNCTION_COMPONENT: typeof oldVNode.type === 'function',
         TEXT: oldVNode.type === REACT_TEXT,
+        MEMO: oldVNode.type.$$typeof === REACT_MEMO,
     };
 
     let DIFF_TYPE = Object.keys(diffTypeMap).filter(k => diffTypeMap[k])[0];
     switch (DIFF_TYPE) {
+        case 'MEMO':
+            updateMemoFunctionComponent(oldVNode, newVNode);
+            break;
         case 'ORIGIN_NODE':
             let currentDom = (newVNode.dom = findDomByVNode(oldVNode));
             setPropsForDOM(currentDom, newVNode.props);
@@ -202,6 +231,20 @@ function deepDOMDiff(oldVNode, newVNode) {
             break;
         default:
             break;
+    }
+}
+
+function updateMemoFunctionComponent(oldVNode, newVNode) {
+    let { type } = oldVNode;
+
+    if (!type.compare(oldVNode.props, newVNode.props)) {
+        const oldDOM = findDomByVNode(oldVNode);
+        const { type } = newVNode;
+        let renderVNode = type.type(newVNode.props);
+        updateDomTree(oldVNode.oldRenderVdom, renderVNode, oldDOM);
+        newVNode.oldRenderVdom = renderVNode;
+    } else {
+        newVNode.oldRenderVdom = oldVNode.oldRenderVdom;
     }
 }
 

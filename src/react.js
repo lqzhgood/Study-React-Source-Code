@@ -1,6 +1,8 @@
-import { REACT_ELEMENT, REACT_FORWARD_REF, toVNode } from './const';
-
+import { REACT_ELEMENT, REACT_FORWARD_REF, toVNode, REACT_MEMO } from './const';
+import { shallowEqual } from './utils';
 import { Component } from './Component';
+
+export * from './hook';
 
 function createElement(type, properties, children) {
     let ref = properties.ref || null;
@@ -40,11 +42,20 @@ function forwardRef(render) {
     };
 }
 
+function memo(type, compare = shallowEqual) {
+    return {
+        $$typeof: REACT_MEMO,
+        type,
+        compare,
+    };
+}
+
 const React = {
     createElement,
     Component,
     createRef,
     forwardRef,
+    memo,
 };
 
 export default React;
